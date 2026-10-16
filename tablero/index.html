@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Calidad de datos institucional</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <img src="assets/logoimssbienestar.png" alt="IMSS-BIENESTAR" />
+          <div>
+            <span class="eyebrow">IMSS-BIENESTAR</span>
+            <h1>Calidad de datos institucional</h1>
+            <p>Seguimiento de la mejora en la calidad de los registros</p>
+          </div>
+        </div>
+        <div class="update-box">
+          <span>Última actualización</span><strong id="updated">—</strong>
+        </div>
+      </div>
+    </header>
+    <main>
+      <div id="status" class="status-card">Cargando datos…</div>
+      <section id="app" hidden>
+        <section class="filters card">
+          <label>Módulo<select id="mod"></select></label
+          ><label>Entidad<select id="ent"></select></label
+          ><label>Regla<select id="rule"></select></label
+          ><label
+            >Buscar por CLUES o unidad<input
+              id="q"
+              placeholder="CLUES o nombre del hospital"
+          /></label>
+          <div class="filter-actions">
+            <button id="reset" class="btn-light">Restablecer filtros</button
+            ><button id="csv" class="btn-primary">Exportar CSV</button>
+          </div>
+        </section>
+        <section class="kpis">
+          <article>
+            <span>Registros analizados</span><strong id="kr">—</strong
+            ><small>Universo seleccionado</small>
+          </article>
+          <article>
+            <span>Registros con incumplimiento</span><strong id="kb">—</strong
+            ><small>Registros únicos afectados</small>
+          </article>
+          <article class="accent">
+            <span>% registros con incumplimiento</span><strong id="kp">—</strong
+            ><small>Sobre el universo seleccionado</small>
+          </article>
+          <article>
+            <span>Variación entre cortes</span><strong id="kd">—</strong
+            ><small id="deltaNote">Sin corte anterior comparable</small>
+          </article>
+        </section>
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h2>Evolución semanal de la calidad</h2>
+              <p id="trendDesc">
+                Registros sin incumplimiento; con regla seleccionada se muestra
+                su incumplimiento
+              </p>
+            </div>
+          </div>
+          <div class="compare-controls">
+            <label>Semana de referencia<select id="weekBase"></select></label
+            ><label>Semana a comparar<select id="weekTarget"></select></label
+            ><button id="firstLast" class="btn-primary" type="button">
+              Primera vs. última semana</button
+            ><button id="previousWeek" class="btn-light" type="button">
+              Comparar con semana anterior</button
+            ><span id="compareStatus" role="status"></span>
+          </div>
+          <div id="compareSummary" class="compare-summary" hidden></div>
+          <div id="trendEmpty" class="chart-empty" hidden>
+            Se necesitan al menos dos semanas comparables.
+          </div>
+          <div class="chart trend-chart"><canvas id="ct"></canvas></div>
+        </article>
+        <section class="charts-grid">
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <h2 id="moduleTitle">Calidad por módulo</h2>
+                <p id="moduleDesc">Registros sin y con incumplimiento</p>
+              </div>
+            </div>
+            <div class="chart"><canvas id="cm"></canvas></div>
+          </article>
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <h2>Principales hallazgos</h2>
+                <p>
+                  Porcentaje de evaluaciones que no cumplen; seleccionar barra
+                  para filtrar
+                </p>
+              </div>
+            </div>
+            <div class="chart"><canvas id="cr"></canvas></div>
+          </article>
+        </section>
+        <section class="charts-grid">
+          <article class="card">
+            <h2>Distribución territorial</h2>
+            <p>
+              Entidades ordenadas por porcentaje de registros con
+              incumplimiento. Seleccione una entidad.
+            </p>
+            <div class="chart"><canvas id="ce"></canvas></div>
+          </article>
+          <article class="card">
+            <h2>Unidades médicas</h2>
+            <p>
+              Buscar por CLUES o nombre. La tabla permite identificar las
+              unidades afectadas.
+            </p>
+            <div class="table">
+              <table id="ut">
+                <thead>
+                  <tr>
+                    <th>CLUES</th>
+                    <th>Unidad</th>
+                    <th>Entidad</th>
+                    <th>Registros</th>
+                    <th>Afectados</th>
+                    <th>%</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+        <article class="card">
+          <h2>Detalle por regla</h2>
+          <p>
+            Ordenado por porcentaje de incumplimiento; los no aplica se excluyen
+            de evaluables
+          </p>
+          <div class="table">
+            <table id="rt">
+              <thead>
+                <tr>
+                  <th>Regla</th>
+                  <th>Módulo</th>
+                  <th>Variable</th>
+                  <th>Descripción</th>
+                  <th>No cumple</th>
+                  <th>% incumplimiento</th>
+                  <th>Evaluables</th>
+                  <th>No aplica</th>
+                  <th>Cumple</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+        <p class="privacy">
+          Versión pública: sólo datos agregados. Las evaluaciones fallidas
+          pueden superar el número de registros porque un registro puede
+          incumplir varias reglas. Los registros individuales permanecen en el
+          Excel de auditoría privado.
+        </p>
+      </section>
+    </main>
+    <script src="js/app.js"></script>
+  </body>
+</html>
