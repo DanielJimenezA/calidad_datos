@@ -1177,6 +1177,46 @@ def entidad_desde_clues(valor):
     return codigo or "SIN ENTIDAD", ENTIDADES_CLUES.get(codigo, codigo or "Sin entidad")
 
 
+# Fechas para clasificación histórica. No añaden reglas de calidad.
+from collections import defaultdict
+
+FECHAS_HISTORICAS = {
+    "MOCE": "FECHA_ATENCION",
+    "Cirugías": "Fecha de realización",
+    "Urgencias": "FECHA_HORA_INGRESO",
+    "Egresos UCI": "FECHA_HORA_INGRESO",
+    "Egresos": "FECHA_HORA_EGRESO",
+}
+
+def convertir_fecha_historica(valor):
+    if es_nulo(valor):
+        return pd.NaT
+    if isinstance(valor, (pd.Timestamp, datetime, date)):
+        return pd.Timestamp(valor)
+    txt = str(valor).strip()
+    try:
+        n = float(txt)
+        if 20000 <= n <= 80000:
+            return pd.to_datetime(n, unit="D", origin="1899-12-30", errors="coerce")
+    except (ValueError, TypeError, OverflowError):
+        pass
+    return pd.to_datetime(txt, errors="coerce", dayfirst=True)
+
+def semana_historica(row, modulo, columnas):
+    campo = FECHAS_HISTORICAS[modulo]
+    valor = getv(row, campo, columnas)
+    dt = convertir_fecha_historica(valor)
+    if pd.isna(dt):
+        return None
+    iso = dt.isocalendar()
+    return f"{iso.year}-S{iso.week:02d}"
+
+def conteo_registros():
+    return {"REGISTROS": 0, "REGISTROS_CON_INCUMPLIMIENTO": 0}
+
+def conteo_reglas():
+    return {"CUMPLE": 0, "NO_CUMPLE": 0, "NO_APLICA": 0}
+
 # ============================================================================
 # ANÁLISIS
 # ============================================================================
@@ -1212,6 +1252,9 @@ def analizar(modulo, ruta):
     stats_entidad_regla = {}
     registros_entidad = {}
     stats_unidad = {}
+    historico_registros = defaultdict(conteo_registros)
+    historico_reglas = defaultdict(conteo_reglas)
+    sin_fecha = 0
 
     print(f"Registros: {len(df):,}")
     print(f"Reglas: {len(reglas):,}")
@@ -1224,6 +1267,12 @@ def analizar(modulo, ruta):
         clues_valor = getv(row, "CLUES", columnas)
         clues_texto = "" if es_nulo(clues_valor) else texto(clues_valor).strip().upper()
         entidad_codigo, entidad_nombre = entidad_desde_clues(clues_valor)
+        semana = semana_historica(row, modulo, columnas)
+        if semana is None:
+            sin_fecha += 1
+        else:
+            clave_h = (semana, modulo, entidad_codigo, clues_texto)
+            historico_registros[clave_h]["REGISTROS"] += 1
         registros_entidad[entidad_codigo] = {
             "ENTIDAD": entidad_nombre,
             "REGISTROS": registros_entidad.get(entidad_codigo, {}).get("REGISTROS", 0)
@@ -1237,6 +1286,10 @@ def analizar(modulo, ruta):
         fila_incumple = False
         for regla in reglas:
             estado, motivo, valor = eval_regla(regla, row, columnas)
+            if semana is not None:
+                clave_hr = (semana, modulo, entidad_codigo, clues_texto, regla["id"])
+                estado_key = {"CUMPLE": "CUMPLE", "NO CUMPLE": "NO_CUMPLE"}.get(estado, "NO_APLICA")
+                historico_reglas[clave_hr][estado_key] += 1
             s = stats[regla["id"]]
 
             ek = (entidad_codigo, regla["id"])
@@ -1284,6 +1337,8 @@ def analizar(modulo, ruta):
 
         if fila_incumple:
             stats_unidad[unidad_key]["REGISTROS_CON_INCUMPLIMIENTO"] += 1
+            if semana is not None:
+                historico_registros[clave_h]["REGISTROS_CON_INCUMPLIMIENTO"] += 1
         if (i + 1) % 10000 == 0:
             print(f"Procesados: {i+1:,}/{len(df):,}")
 
@@ -1387,7 +1442,12 @@ def analizar(modulo, ruta):
         )
     df_entidad = pd.DataFrame(filas_entidad)
 
-    return df_reglas, df_resultados, len(df), df_entidad, df_entidad_regla, pd.DataFrame(list(stats_unidad.values()))
+    hist_reg = [dict(SEMANA_ISO=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], **v) for k,v in historico_registros.items()]
+    hist_rule = [dict(SEMANA_ISO=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], REGLA_ID=k[4], EVALUABLES=v["CUMPLE"]+v["NO_CUMPLE"], **v) for k,v in historico_reglas.items()]
+    if sum(x["REGISTROS"] for x in hist_reg) + sin_fecha != len(df):
+        raise ValueError(f"Inconsistencia histórica en {modulo}")
+    return (df_reglas, df_resultados, len(df), df_entidad, df_entidad_regla,
+            pd.DataFrame(list(stats_unidad.values())), hist_reg, hist_rule, sin_fecha)
 
 
 # ============================================================================
@@ -1938,7 +1998,23 @@ def exportar_excel_consolidado(ruta_salida, analisis):
 
 
 
-def exportar_json_tablero(analisis, ruta_json=None, fecha_corte=None):
+def exportar_historico_semanal(analisis, ruta_json):
+    ruta = Path(ruta_json).parent / "historico_semanal.json"
+    registros, reglas, sin_fecha = [], [], {}
+    for modulo, info in analisis.items():
+        registros.extend(info["historico_registros"])
+        reglas.extend(info["historico_reglas"])
+        sin_fecha[modulo] = int(info["registros_sin_fecha"])
+    payload = {"version": "7.0", "generado": datetime.now().isoformat(timespec="seconds"),
+               "fechas": FECHAS_HISTORICAS, "registros_sin_fecha": sin_fecha,
+               "registros": registros, "reglas": reglas}
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with ruta.open("w", encoding="utf-8") as archivo:
+        json.dump(payload, archivo, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    return ruta
+
+
+def exportar_json_tablero(analisis, ruta_json=None):
     """Publica únicamente agregados; histórico filtrable y una observación por semana ISO."""
     if ruta_json is None:
         ruta_json = Path(__file__).resolve().parents[1] / "tablero" / "data" / "calidad.json"
@@ -1980,12 +2056,9 @@ def exportar_json_tablero(analisis, ruta_json=None, fecha_corte=None):
             unidades.append(u)
 
     ahora = datetime.now()
-    fecha_corte = fecha_corte or ahora.date()
-    if isinstance(fecha_corte, str):
-        fecha_corte = date.fromisoformat(fecha_corte)
-    semana = f"{fecha_corte.isocalendar().year}-S{fecha_corte.isocalendar().week:02d}"
+    semana = f"{ahora.isocalendar().year}-S{ahora.isocalendar().week:02d}"
     payload = {
-        "metadata": {"titulo": "Calidad de datos institucional", "generado": ahora.isoformat(timespec="seconds"), "fecha_corte": fecha_corte.isoformat(), "semana_iso": semana, "version": "6.0", "reglas_version": "v6-reglas"},
+        "metadata": {"titulo": "Calidad de datos institucional", "generado": ahora.isoformat(timespec="seconds"), "fecha_corte": ahora.date().isoformat(), "semana_iso": semana, "version": "6.0", "reglas_version": "v6-reglas"},
         "resumen_modulos": modulos,
         "resumen_entidad": entidades,
         "resumen_entidad_regla": entidad_reglas,
@@ -2016,102 +2089,144 @@ def exportar_json_tablero(analisis, ruta_json=None, fecha_corte=None):
 # ============================================================================
 
 
-def pedir_fecha_corte(nombre):
-    """Fecha de referencia de los datos (no fecha de ejecución)."""
-    while True:
-        valor = input(f"Fecha de corte {nombre} (AAAA-MM-DD): ").strip()
-        try:
-            return date.fromisoformat(valor)
-        except ValueError:
-            print("Fecha inválida; ejemplo: 2026-10-11")
-
-
-def procesar_carpeta(carpeta, etiqueta):
-    encontrados, _ = identificar_archivos(carpeta)
-    validar_identificacion(encontrados)
-    analisis = {}
-    for indice, modulo in enumerate(["Cirugías", "MOCE", "Urgencias", "Egresos UCI", "Egresos"], 1):
-        archivo = encontrados[modulo]
-        print(f"[{etiqueta}] {indice}/5 {modulo}: {archivo.name}")
-        reglas, resultados, total, resumen_entidad, resumen_entidad_regla, resumen_unidad = analizar(modulo, archivo)
-        analisis[modulo] = {
-            "reglas": reglas, "resultados": resultados, "total": total,
-            "archivo": archivo, "resumen_entidad": resumen_entidad,
-            "resumen_entidad_regla": resumen_entidad_regla, "resumen_unidad": resumen_unidad,
-        }
-        print(f"  {total:,} registros | {len(resultados):,} evaluaciones incumplidas")
-    return analisis
-
-
 def main():
-    print("=" * 80)
-    print("CALIDAD DE DATOS — COMPARACIÓN DE DOS CORTES (5 MÓDULOS POR CORTE)")
-    print("Se aplicarán las mismas reglas v6 a ambos conjuntos.")
-    print("Los archivos pueden ser acumulativos: se comparan dos fotografías de calidad")
-    print("del universo completo, NO sólo los registros nuevos de cada semana.")
-    print("=" * 80)
+    try:
+        print("=" * 90)
+        print("ANÁLISIS DE CALIDAD - 5 MÓDULOS")
+        print("=" * 90)
+        print("Seleccione la carpeta que contiene los cinco archivos.")
+        print()
 
-    print("\nSelecciona la carpeta del CORTE ANTERIOR (5 archivos).")
-    anterior = seleccionar_carpeta()
-    if anterior is None:
-        print("Cancelado")
-        return
-    fecha_anterior = pedir_fecha_corte("ANTERIOR")
+        carpeta = seleccionar_carpeta()
 
-    print("\nSelecciona la carpeta del CORTE ACTUAL (5 archivos).")
-    actual = seleccionar_carpeta()
-    if actual is None:
-        print("Cancelado")
-        return
-    fecha_actual = pedir_fecha_corte("ACTUAL")
-    if fecha_anterior.isocalendar()[:2] == fecha_actual.isocalendar()[:2]:
-        raise ValueError("Ambos cortes pertenecen a la misma semana ISO; selecciona semanas distintas.")
-    if fecha_actual <= fecha_anterior:
-        raise ValueError("La fecha actual debe ser posterior a la anterior.")
+        if not carpeta:
+            print("Proceso cancelado.")
+            return
 
-    # Primero validar identificación de ambos conjuntos, antes de modificar archivos de salida.
-    for carpeta in (anterior, actual):
-        identificados, _ = identificar_archivos(carpeta)
-        validar_identificacion(identificados)
+        print(f"Carpeta seleccionada:\n{carpeta}\n")
 
-    print("\nProcesando corte anterior...")
-    analisis_anterior = procesar_carpeta(anterior, "ANTERIOR")
-    print("\nProcesando corte actual...")
-    analisis_actual = procesar_carpeta(actual, "ACTUAL")
+        encontrados, archivos_validos = identificar_archivos(carpeta)
+        validar_identificacion(encontrados)
 
-    print("\nSelecciona dónde guardar el Excel PRIVADO del corte anterior.")
-    salida_anterior = seleccionar_salida_consolidada(anterior)
-    if not salida_anterior:
-        print("Cancelado")
-        return
-    print("\nSelecciona dónde guardar el Excel PRIVADO del corte actual.")
-    salida_actual = seleccionar_salida_consolidada(actual)
-    if not salida_actual:
-        print("Cancelado")
-        return
-    if salida_anterior.resolve() == salida_actual.resolve():
-        raise ValueError("Elige rutas diferentes para los dos Excel; no se deben sobrescribir.")
+        print("Archivos identificados:")
+        for modulo in ["Cirugías", "MOCE", "Urgencias", "Egresos UCI", "Egresos"]:
+            print(f"  {modulo:<12} -> {encontrados[modulo].name}")
 
-    exportar_excel_consolidado(salida_anterior, analisis_anterior)
-    exportar_excel_consolidado(salida_actual, analisis_actual)
-    # El último corte exportado permanece como calidad.json actual.
-    exportar_json_tablero(analisis_anterior, fecha_corte=fecha_anterior)
-    ruta_json, ruta_tendencia = exportar_json_tablero(analisis_actual, fecha_corte=fecha_actual)
+        print()
+        analisis = {}
 
-    def resumen(a):
-        total = sum(int(x["total"]) for x in a.values())
-        afectados = sum(int(x["resultados"]["FILA_ORIGEN"].nunique()) if not x["resultados"].empty else 0 for x in a.values())
-        return total, afectados, (100 * (total - afectados) / total if total else None)
-    r1, f1, q1 = resumen(analisis_anterior)
-    r2, f2, q2 = resumen(analisis_actual)
-    print("\n" + "=" * 80)
-    print(f"Anterior ({fecha_anterior}): {r1:,} registros, {f1:,} afectados, calidad {q1:.2f}%")
-    print(f"Actual   ({fecha_actual}): {r2:,} registros, {f2:,} afectados, calidad {q2:.2f}%")
-    print(f"Variación de calidad: {q2 - q1:+.2f} puntos porcentuales")
-    print(f"Histórico actualizado: {ruta_tendencia}")
-    print(f"Tablero actual: {ruta_json}")
-    print("NOTA: la variación no mide necesariamente correcciones sobre los mismos registros.")
-    print("=" * 80)
+        for numero_modulo, modulo in enumerate(
+            ["Cirugías", "MOCE", "Urgencias", "Egresos UCI", "Egresos"],
+            start=1,
+        ):
+            archivo = encontrados[modulo]
+
+            print()
+            print("#" * 90)
+            print(f"MÓDULO {numero_modulo}/5: {modulo.upper()}")
+            print("#" * 90)
+
+            (reglas, resultados, total, resumen_entidad, resumen_entidad_regla,
+             resumen_unidad, hist_reg, hist_rule, sin_fecha) = analizar(modulo, archivo)
+
+            analisis[modulo] = {
+                "reglas": reglas,
+                "resultados": resultados,
+                "total": total,
+                "archivo": archivo,
+                "resumen_entidad": resumen_entidad,
+                "resumen_entidad_regla": resumen_entidad_regla,
+                "resumen_unidad": resumen_unidad,
+                "historico_registros": hist_reg,
+                "historico_reglas": hist_rule,
+                "registros_sin_fecha": sin_fecha,
+            }
+
+            print(
+                f"{modulo}: {total:,} registros | "
+                f"{len(resultados):,} incumplimientos"
+            )
+
+        print()
+        print("=" * 90)
+        print("ANÁLISIS DE LOS CINCO MÓDULOS TERMINADO")
+        print("=" * 90)
+
+        salida = seleccionar_salida_consolidada(carpeta)
+
+        if not salida:
+            print("Proceso cancelado: no se seleccionó archivo de salida.")
+            return
+
+        if salida.suffix.lower() != ".xlsx":
+            salida = salida.with_suffix(".xlsx")
+
+        exportar_excel_consolidado(salida, analisis)
+        ruta_json, ruta_tendencia = exportar_json_tablero(analisis)
+        ruta_historico = exportar_historico_semanal(analisis, ruta_json)
+        print(f"Histórico por fecha clínica: {ruta_historico}")
+
+        print()
+        print("=" * 90)
+        print("RESULTADO FINAL")
+        print("=" * 90)
+
+        for modulo, info in analisis.items():
+            reglas = info["reglas"]
+            print(
+                f"{modulo:<12} | "
+                f"Registros: {info['total']:>10,} | "
+                f"Reglas con falla: {(reglas['ESTADO'] == 'NO CUMPLE').sum():>3,} | "
+                f"Incumplimientos: {len(info['resultados']):>10,}"
+            )
+
+        print()
+        print(f"Excel generado:\n{salida}")
+        print(f"JSON para GitHub Pages:\n{ruta_json}")
+        print(f"Histórico de tendencia:\n{ruta_tendencia}")
+        print()
+        print("Hojas:")
+        print("  Resumen_Modulos")
+        print("  Resumen_Entidad")
+        print("  Resumen_Entidad_Regla")
+        print("  Cir_Reglas / Cir_Resultados")
+        print("  MOCE_Reglas / MOCE_Resultados")
+        print("  Urg_Reglas / Urg_Resultados")
+        print("  UCI_Reglas / UCI_Resultados")
+        print("  Egr_Reglas / Egr_Resultados")
+        print("=" * 90)
+
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showinfo(
+                "Análisis finalizado",
+                "Los cinco módulos fueron analizados correctamente.\n\n"
+                f"Resultado:\n{salida}",
+            )
+            root.destroy()
+        except Exception:
+            pass
+
+    except Exception as exc:
+        print()
+        print("=" * 90)
+        print("ERROR")
+        print("=" * 90)
+        print(str(exc))
+        print("=" * 90)
+
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showerror("Error", str(exc))
+            root.destroy()
+        except Exception:
+            pass
+
+        raise
 
 
 if __name__ == "__main__":

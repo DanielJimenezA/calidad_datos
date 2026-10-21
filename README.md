@@ -1,53 +1,71 @@
-# Calidad de datos institucional — versión 6.0
+# Tablero de Calidad de Datos v7.0 — IMSS-BIENESTAR
+
+Proyecto basado en la versión v6. **Las reglas originales de calidad permanecen sin cambios.**
+
+## Importante sobre los JSON incluidos
+
+Los JSON incluidos son **únicamente una demostración** generada a partir de una muestra anonimizada (14 filas por módulo aproximadamente). No representan cifras institucionales, y no deben publicarse como resultados reales. Los archivos históricos se regeneran al ejecutar el análisis sobre los cinco insumos acumulativos reales.
+
+## Fechas clínicas para las semanas ISO
+
+- MOCE: `FECHA_ATENCION`
+- Cirugías: `Fecha de Realización` (alias normalizado internamente `Fecha de realización`)
+- Urgencias: `fecha_hora_ingreso`
+- Egresos UCI: `fecha_hora_ingreso`
+- Egresos: `fecha_hora_egreso`
+
+Las fechas son **criterios de agrupación**, no reglas nuevas de calidad. Fechas vacías o inválidas se excluyen de la serie semanal y se contabilizan en `registros_sin_fecha`.
 
 ## Ejecución
 
-1. Coloque el catálogo en `tablero/data/catalogos/unidades.json` (incluido).
-2. Ejecute `python scripts/calidad_5_modulos.py` y seleccione los archivos fuente.
-3. El script genera el Excel privado de auditoría y `tablero/data/calidad.json` más `tablero/data/tendencia.json`.
-4. Desde `tablero/`, ejecute `python -m http.server 8000` y visite http://localhost:8000.
-5. Para GitHub Pages, copie el contenido de `tablero/` a la raíz o a `docs/` del repositorio; configure Pages con esa carpeta.
+1. Instalar dependencias: `python -m pip install -r requirements.txt`.
+2. Ejecutar `python scripts/calidad_5_modulos.py` desde la carpeta raíz del proyecto. Seleccionar los cinco archivos acumulativos solicitados por el explorador y la ruta de salida del Excel.
+3. El proceso genera `tablero/data/calidad.json`, `tablero/data/tendencia.json` y `tablero/data/historico_semanal.json` y el Excel de auditoría.
+4. Ejecutar `cd tablero` y `python -m http.server 8000`.
+5. Abrir `http://localhost:8000`.
+6. Para GitHub Pages publicar la carpeta `tablero` como raíz del sitio (o copiar su contenido a la carpeta publicada).
 
-## Definiciones
+## Filtros y métricas
 
-- Registros con incumplimiento: registros únicos que fallan una o más reglas.
-- Evaluaciones fallidas: suma de NO CUMPLE; un registro puede fallar varias reglas.
-- EVALUABLES = CUMPLE + NO_CUMPLE; NO_APLICA queda fuera del denominador.
-- Histórico: se guarda una observación por semana ISO, con métricas filtrables por módulo, entidad y regla.
-- Si se selecciona una regla, el KPI de registros únicos no se presenta como exacto: aparece «—» porque el JSON público no contiene registros individuales. La gráfica de esa regla sí usa evaluaciones.
+Los filtros de módulo, entidad, CLUES/nombre de unidad, regla, semana inicial/final y modo semanal/acumulado afectan KPI, gráficas, tablas y CSV. La comparación usa las semanas seleccionadas; los demás paneles muestran la semana final seleccionada. El acumulado se limita al año ISO de la semana final.
 
-## Privacidad y alcance
+- Todas las reglas: `registros con incumplimiento / registros analizados` (registros únicos dentro de cada módulo).
+- Regla específica: `NO_CUMPLE / EVALUABLES`, con `EVALUABLES = CUMPLE + NO_CUMPLE`.
+- La variación de calidad se expresa en puntos porcentuales (calidad = 100 - % incumplimiento).
+- Semanas sin registros aparecen sin dato, no como 0% de calidad.
+- El selector comienza en S01 de 2026 y termina en la última semana ISO completa según la fecha local del navegador.
 
-El JSON público contiene sólo agregados por módulo, entidad, regla y unidad. Los detalles de paciente y valores observados quedan en el Excel privado. Antes de publicar, la institución debe autorizar incluso los agregados por unidad y revisar celdas pequeñas.
+## Limitaciones y seguridad
 
-Esta entrega incluye análisis territorial por entidad y tabla de unidades, pero **no incluye todavía un mapa geográfico**; la incorporación de GeoJSON validado queda como siguiente mejora. El catálogo es de referencia, no se inventan nombres de unidades.
+- No se incluyen datos de pacientes individuales en los JSON; el Excel detallado de auditoría debe mantenerse privado.
+- Los conteos de registros representan filas de origen (no deduplicación por CURP ni clave de episodio), tal como lo hace el motor v6.
+- No se reescribieron las reglas originales. Cualquier cambio de reglas requiere una versión explícita y revisión institucional.
+- Validar con los cinco acumulativos completos antes de publicar: la muestra anonimizada no garantiza todas las semanas, CLUES o casuísticas.
+- Si una CLUES no figura en `catalogos/unidades.json`, se mostrará como nombre no disponible pero el filtro por clave seguirá funcionando.
 
-Los datos JSON iniciales son marcadores vacíos, no resultados reales. Ejecute Python para generar un corte.
+## Cambios v7.1 (2026-10-20)
 
+- Filtro de unidades explícito con casillas CLUES · nombre de unidad. Se pueden marcar varias unidades. El buscador localiza opciones, pero **no aplica filtros por sí solo**: debe marcarse una o varias casillas. «Todas las unidades» quita la selección y muestra todas.
+- Los KPI globales **no cambian de definición** al elegir una regla: registros, registros únicos afectados, cumplimiento global y evaluaciones incumplidas se mantienen; la regla seleccionada tiene un KPI separado.
+- Escala continua de colores pastel según **cumplimiento**: 0 % rojo, 50 % amarillo, 100 % verde. Sin evaluables se muestra gris.
+- Las semanas se muestran desde S01 hasta la última semana 2026 presente en los agregados; los periodos sin registros muestran «—», no cero de cumplimiento. **La última semana presente no implica necesariamente que esté completa**: verificar el corte de fuentes.
+- El histórico por CLUES permite sumar conteos de registros únicos por unidad y semana. Si los archivos de origen contienen duplicados clínicos, se consideran filas distintas, como en el motor v6.
+- La regla seleccionada afecta gráficos y tabla de reglas; los KPI globales conservan su significado. La comparación histórica cambia a cumplimiento de la regla cuando ésta está seleccionada, y lo indica en la descripción.
+- El proyecto incluye JSON de muestra anonimizada/demostración, no totales institucionales. Ejecutar el script con los archivos acumulativos reales para recalcularlos.
 
-## Comparador de semanas (actualización)
+### Verificación rápida
 
-El tablero incluye dos selectores: **Semana de referencia** y **Semana a comparar**. Permite seleccionar cualquier par de semanas presentes en `tablero/data/tendencia.json`, además de un acceso rápido a la semana anterior. La gráfica muestra todas las semanas disponibles y la tarjeta de variación corresponde exclusivamente al par seleccionado. Se preservan los filtros de módulo, entidad y regla, las tablas y el resto de visualizaciones.
-
-La variación se calcula en puntos porcentuales. Para calidad de registros, un aumento es favorable; para incumplimiento de una regla, una disminución es favorable. No se calcula variación si faltan datos para los filtros o cambia `reglas_version`. Se conserva una sola entrada por semana ISO. **Para disponer de semanas históricas reales**, procesa los cinco archivos de cada semana con la misma versión de reglas y conserva los cortes; el script actual usa la fecha de ejecución como fecha de corte y reemplaza una ejecución anterior de la misma semana. No basta con copiar el `calidad.json` v5 al histórico v6.
-
-## Procesamiento doble: corte anterior y actual
-
-Esta edición del generador solicita **dos carpetas**, cada una con cinco archivos (Cirugías, MOCE, Urgencias, Egresos UCI y Egresos), y la **fecha de corte** de cada carpeta en formato `AAAA-MM-DD`. La fecha se escribe en la consola o celda de Jupyter donde se ejecuta el script; la selección de carpetas se hace con el explorador de archivos. Las fechas deben pertenecer a semanas ISO diferentes.
-
-1. Guarda los cinco archivos anteriores en una carpeta y los cinco actuales en otra.
-2. Ejecuta `python scripts/calidad_5_modulos.py` (o `%run scripts/calidad_5_modulos.py` desde Jupyter).
-3. Selecciona la carpeta anterior e introduce su fecha de corte.
-4. Selecciona la carpeta actual e introduce su fecha de corte.
-5. Elige dos nombres diferentes para los Excel privados de auditoría.
-6. El script procesa ambos conjuntos con las mismas reglas v6 y guarda ambos cortes en `tablero/data/tendencia.json`. `tablero/data/calidad.json` corresponde exclusivamente al corte actual.
-7. Abre el tablero y selecciona ambas semanas en el comparador.
-
-**Interpretación:** Si las bases son acumulativas, la comparación representa la calidad del universo acumulado en dos fotografías temporales. No equivale a medir exclusivamente los nuevos registros ni permite identificar correcciones de registros antiguos sin un cruce de identificadores estables. Una fecha de corte introducida manualmente etiqueta el conjunto; el script no elimina automáticamente registros posteriores a esa fecha. Asegúrate de que cada carpeta realmente representa el corte indicado.
-
-**Seguridad:** el Excel detallado debe permanecer privado. El tablero usa sólo agregados. Antes de publicar resultados institucionales por unidad, revisa autorizaciones y riesgo de celdas pequeñas.
+1. `python -m http.server 8000` desde `tablero/` y abrir `http://localhost:8000`.
+2. Elegir Cirugías y Chiapas; comprobar KPI de cumplimiento global y KPI de la regla CURP por separado.
+3. Marcar una CLUES en el selector y verificar que cambian KPI, gráficas, tablas y CSV.
+4. Cambiar semana final, modo semanal/acumulado y comparar denominadores.
+5. Si un porcentaje aparece como 100 %, verificar numerador y denominador del JSON antes de interpretarlo como «todas las reglas fallan».
 
 
-## Comparación histórica (actualización)
-
-El botón **Primera vs. última semana** elige automáticamente los extremos disponibles del histórico. También puedes elegir manualmente una semana de referencia y una posterior. La gráfica muestra los cortes intermedios disponibles en ese rango, sin inventar semanas faltantes. Para incorporar nuevas semanas conserva el archivo `tablero/data/tendencia.json` entre ejecuciones. La comparación exige la misma `reglas_version`; la evolución del acumulado no demuestra correcciones de registros históricos individuales.
+## Cambios v7.2
+- Gráfica histórica con color continuo por cumplimiento en puntos y segmentos.
+- Selector CLUES desplegable, buscable y multiselección, filtrado por entidad y módulo.
+- Semanas del 2026 hasta la última semana ISO completa, sin proyectar semanas futuras.
+- Diagnóstico de semanas sin registros o sin evaluaciones aplicables; no se interpolan valores inexistentes.
+- No es necesario reprocesar Python si los JSON ya son correctos.
+- **Nota**: Los JSON empaquetados en esta entrega conservan la marca `demo: true`; reemplácelos por sus JSON reales ya procesados antes de analizar indicadores institucionales.
