@@ -92,13 +92,13 @@
             ><small>Universo del periodo y filtros</small>
           </article>
           <article>
-            <span>Registros con al menos un incumplimiento</span><button class="info-trigger" type="button" aria-label="Explicación: Registros con al menos un incumplimiento" aria-expanded="false" data-tooltip="Registros únicos con una o más reglas en estado NO CUMPLE. Un mismo registro se cuenta una sola vez aunque incumpla varias reglas.">i</button><strong id="kb">—</strong
-            ><small id="recordNote">Registros únicos afectados</small>
+            <span>Evaluaciones aplicables</span><button class="info-trigger" type="button" aria-label="Explicación: Evaluaciones aplicables" aria-expanded="false" data-tooltip="Suma de CUMPLE y NO CUMPLE. NO APLICA se excluye.">i</button><strong id="kb">—</strong
+            ><small id="recordNote">Cumple + no cumple</small>
           </article>
           <article class="accent">
-            <span>Tasa de registros con incumplimiento (%)</span><button class="info-trigger" type="button" aria-label="Explicación: Tasa de registros con incumplimiento (%)" aria-expanded="false" data-tooltip="Registros únicos afectados divididos entre los registros analizados, multiplicado por 100. Un valor menor indica mejor calidad.">i</button><strong id="kp">—</strong
+            <span>Porcentaje de cumplimiento</span><button class="info-trigger" type="button" aria-label="Explicación: Porcentaje de cumplimiento" aria-expanded="false" data-tooltip="CUMPLE / (CUMPLE + NO CUMPLE) × 100. Se pondera por evaluaciones aplicables, no por registros perfectos.">i</button><strong id="kp">—</strong
             ><small id="globalNote"
-              >Registros afectados / registros analizados</small
+              >Evaluaciones correctas / aplicables</small
             >
           </article>
           <article>
@@ -106,8 +106,8 @@
             ><small id="failNote">Suma de NO CUMPLE de todas las reglas</small>
           </article>
           <article>
-            <span id="ruleKpiTitle">Cumplimiento de regla seleccionada</span><button class="info-trigger" type="button" aria-label="Explicación: Cumplimiento de regla seleccionada" aria-expanded="false" data-tooltip="Porcentaje CUMPLE ÷ (CUMPLE + NO CUMPLE) × 100 para la regla seleccionada. NO APLICA se excluye del denominador.">i</button><strong id="ruleKpi">—</strong
-            ><small id="ruleKpiNote">Seleccione una regla para consultar</small>
+            <span>Evaluaciones que cumplen</span><button class="info-trigger" type="button" aria-label="Explicación: Evaluaciones que cumplen" aria-expanded="false" data-tooltip="Cantidad de evaluaciones CUMPLE para los filtros activos.">i</button><strong id="ruleKpi">—</strong
+            ><small id="ruleKpiNote">NO APLICA se excluye</small>
           </article>
           <article>
             <span>Variación del cumplimiento</span><button class="info-trigger" type="button" aria-label="Explicación: Variación del cumplimiento" aria-expanded="false" data-tooltip="Diferencia entre el cumplimiento de los periodos comparados, en puntos porcentuales (pp). No es una variación porcentual relativa.">i</button><strong id="kd">—</strong
@@ -138,8 +138,7 @@
             <div>
               <h2>Evolución semanal de la calidad</h2>
               <p id="trendDesc">
-                Registros sin incumplimiento; con regla seleccionada se muestra
-                su incumplimiento
+                Evaluaciones correctas / aplicables para los filtros activos.
               </p>
             </div>
           </div>
@@ -167,7 +166,7 @@
             <div class="card-head">
               <div>
                 <h2 id="moduleTitle">Calidad por módulo</h2>
-                <p id="moduleDesc">Registros sin y con incumplimiento</p>
+                <p id="moduleDesc">Evaluaciones correctas / aplicables</p>
               </div>
             </div>
             <div class="chart"><canvas id="cm"></canvas></div>
@@ -189,8 +188,7 @@
           <article class="card">
             <h2>Cumplimiento por entidad</h2>
             <p>
-              Calidad de registros o evaluaciones según el contexto
-              seleccionado.
+              Evaluaciones correctas / aplicables según los filtros activos.
             </p>
             <div class="chart"><canvas id="ce"></canvas></div>
           </article>
@@ -202,9 +200,9 @@
                 <select id="unitsOrder">
                   <option value="Cumplimiento">% cumplimiento</option>
                   <option value="Afectados" selected>
-                    Registros afectados
+                    Evaluaciones incumplidas
                   </option>
-                  <option value="Registros">Registros analizados</option>
+                  <option value="Registros">Evaluaciones aplicables</option>
                   <option value="Unidad">Nombre de unidad</option>
                   <option value="Entidad">Entidad</option>
                   <option value="CLUES">CLUES</option>
@@ -219,7 +217,7 @@
             </div>
             <p>
               Buscar por CLUES o nombre. La tabla permite identificar las
-              unidades afectadas.
+              unidades con menor cumplimiento.
             </p>
             <div class="table">
               <table id="ut">
@@ -228,8 +226,8 @@
                     <th data-sort-units="CLUES">CLUES</th>
                     <th data-sort-units="Unidad">Unidad</th>
                     <th data-sort-units="Entidad">Entidad</th>
-                    <th data-sort-units="Registros">Registros</th>
-                    <th data-sort-units="Afectados">Afectados</th>
+                    <th data-sort-units="Registros">Evaluaciones aplicables</th>
+                    <th data-sort-units="Afectados">No cumple</th>
                     <th data-sort-units="Cumplimiento">% cumplimiento</th>
                   </tr>
                 </thead>
@@ -297,7 +295,7 @@
         <p class="privacy">El visor permite filtrar por módulo, entidad, CLUES y regla, paginar y exportar CSV filtrado. Los filtros del tablero público no se transfieren automáticamente al visor local.</p>
       </section>
     </main>
-    <footer class="institutional-footer"><strong>Coordinación de Planeación Estratégica · División de Sistemas de Información en Salud</strong><p>IMSS-Bienestar · Expediente Digital</p><p>Créditos: <a href="https://github.com/DanielJimenezA" target="_blank" rel="noopener noreferrer">DanielJimenezA · GitHub</a></p></footer><script src="js/app.js?v=8.0"></script>
+    <footer class="institutional-footer"><strong>Coordinación de Planeación Estratégica · División de Sistemas de Información en Salud</strong><p>IMSS-Bienestar · Expediente Digital</p><p>Créditos: <a href="https://github.com/DanielJimenezA" target="_blank" rel="noopener noreferrer">DanielJimenezA · GitHub</a></p></footer><script src="js/app.js?v=8.6"></script>
   <div id="kpiTooltip" class="info-popover" role="tooltip" hidden></div>
 <script src="js/tooltips.js" defer></script>
 </body>

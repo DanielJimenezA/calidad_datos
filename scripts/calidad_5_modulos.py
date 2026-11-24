@@ -663,14 +663,14 @@ REGLAS = {
         {
             "id": "EGR-08",
             "variable": "FECHA_HORA_EGRESO",
-            "regla": "No puede ser nula y debe ser fecha/hora válida",
-            "tipo": "required_date",
+            "regla": "Fecha/hora válida, obligatoria si INDICADOR_EGRESO=1",
+            "tipo": "required_date_if_egreso",
         },
         {
             "id": "EGR-09",
             "variable": "DX_PRIN_EGRESO",
-            "regla": "No puede ser nulo",
-            "tipo": "required",
+            "regla": "Obligatorio si INDICADOR_EGRESO=1",
+            "tipo": "required_if_egreso",
         },
         {
             "id": "EGR-10",
@@ -734,6 +734,145 @@ REGLAS = {
 # ============================================================================
 
 
+# V8.5: propuestas de cirugias.xlsx y egresos.xlsx. Las relaciones con
+# catalogos externos quedan pendientes: no se infieren de los nombres.
+CIR85 = [
+    ("Clave especialidad médico solicitante", "required_numeric", None, None),
+    ("Matrícula del médico que autoriza", "required_digits", None, 9),
+    ("Nombre del médico que autoriza", "required_text", None, None),
+    (
+        "Sala donde se programó la cirugía",
+        "required_unless_pending",
+        "Estatus de la solicitud",
+        None,
+    ),
+    ("Número de veces suspendida", "optional_numeric", None, None),
+    (
+        "Último motivo de suspensión",
+        "required_if_positive",
+        "Número de veces suspendida",
+        None,
+    ),
+    (
+        "Matricula enfermera quirúrgica",
+        "required_if_realizada_numeric",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Procedimiento principal de enfermería",
+        "required_if_realizada_text",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Sala donde se realizó la cirugía",
+        "required_if_realizada_text",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Matrícula del médico cirujano",
+        "required_if_realizada_numeric",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Clave especialidad médico cirujano",
+        "required_if_realizada_numeric",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Procedimiento principal de la intervención",
+        "required_if_realizada_text",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Matrícula del anestesiólogo",
+        "required_if_realizada_text",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Anestesia empleada",
+        "required_if_realizada_text",
+        "Estatus de la solicitud",
+        None,
+    ),
+    (
+        "Tipo de anestesia empleada",
+        "required_if_realizada_text",
+        "Estatus de la solicitud",
+        None,
+    ),
+    ("Fecha de realización", "date_gte_other", "Fecha solicitud", None),
+]
+EGR85 = [
+    ("CVE_CAMA", "required_text_max", None, 4),
+    ("DESC_CENTRAL", "required_text", None, None),
+    ("FECHA_HORA_EGRESO", "date_gte_other", "FECHA_HORA_INGRESO", None),
+    ("CVE_ESP_EGRESO", "required_if_egreso_numeric", "INDICADOR_EGRESO", None),
+    ("CVE_MOTIVO_EGRESO", "required_if_egreso_text_max", "INDICADOR_EGRESO", 50),
+    ("DX_PRIN_EGRESO", "required_if_egreso_text", "INDICADOR_EGRESO", None),
+    ("CAUSA_DIRECTA_DEF", "required_if_present_text_max", "FECHA_DEFUNCION", 4),
+    ("FECHA_DEFUNCION", "optional_date", None, None),
+    ("INFECCION_NOSOCOMIAL", "optional_text", None, None),
+    ("MATRICULA_MEDICO_EGRESO", "required_if_egreso_numeric", "INDICADOR_EGRESO", None),
+    ("CVE_ESP_MEDICO_EGRESO", "required_if_egreso_numeric", "INDICADOR_EGRESO", None),
+    ("CVE_ESP_INGRESO", "required_if_present_text", "FECHA_HORA_INGRESO", None),
+]
+for mod, prefix, specs in (("Cirugías", "CIR", CIR85), ("Egresos", "EGR", EGR85)):
+    start = 24 if prefix == "CIR" else 18
+    for idx, (var, typ, other, limit) in enumerate(specs, start):
+        REGLAS[mod].append(
+            {
+                "id": f"{prefix}-{idx:02d}",
+                "variable": var,
+                "regla": f"Propuesta v8.5: {typ.replace('_', ' ')}"
+                + (f" (max. {limit})" if limit else ""),
+                "tipo": "propuesta_v85",
+                "validacion": typ,
+                "other": other,
+                "max": limit,
+            }
+        )
+        MODULOS[mod]["variables"].setdefault(var, [var])
+
+# Alias adicionales; no modificar nombres de columnas de origen.
+MODULOS["Cirugías"]["variables"]["Matricula enfermera quirúrgica"] += [
+    "Matrícula enfermera quirúrgica"
+]
+MODULOS["Cirugías"]["variables"]["Matrícula del anestesiólogo"] += [
+    "Matrícula anestesiólogo (a)",
+    "Matricula anestesiólogo (a)",
+]
+MODULOS["Egresos"]["variables"].setdefault("INDICADOR_EGRESO", ["INDICADOR_EGRESO"])
+MODULOS["Egresos"]["variables"]["FECHA_DEFUNCION"] += ["FECHA_HORA_DEFUNCION"]
+
+
+# Registrar dependencias MOCE y eliminar reglas duplicadas por ID.
+for mod, rules in REGLAS.items():
+    REGLAS[mod] = list({r["id"]: r for r in rules}.values())
+for campo in (
+    "CVE_MATRICULA",
+    "DES_SERVICIO",
+    "DES_OCASION_SERVICIO_DIAG_PRINCIPAL",
+    "HORA_CITA",
+    "INI_ATENCION",
+    "FIN_ATENCION",
+):
+    MODULOS["MOCE"]["variables"].setdefault(campo, [campo])
+
+# Equivalencias confirmadas para el esquema real de MOCE.
+MODULOS["MOCE"]["variables"]["CVE_MATRICULA"] += ["MATRICULA"]
+MODULOS["MOCE"]["variables"]["DES_SERVICIO"] += ["DESC_SERVICIO"]
+MODULOS["MOCE"]["variables"]["DES_OCASION_SERVICIO_DIAG_PRINCIPAL"] += [
+    "OCASION_PRINCIPAL"
+]
+
+
 def es_nulo(v):
     if v is None:
         return True
@@ -778,15 +917,20 @@ def valor_mostrar(v):
 
 
 def normalizar_columnas(df, modulo):
-    lookup = {str(c).strip().casefold(): str(c) for c in df.columns}
+    import unicodedata
+
+    def clave(nombre):
+        nombre = unicodedata.normalize("NFKD", str(nombre).strip())
+        nombre = "".join(c for c in nombre if not unicodedata.combining(c))
+        nombre = re.sub(r"[\s_]+", " ", nombre)
+        return nombre.casefold().strip()
+
+    lookup = {clave(c): str(c) for c in df.columns}
     out = {}
     for canonica, aliases in MODULOS[modulo]["variables"].items():
-        encontrada = None
-        for alias in aliases:
-            if alias.strip().casefold() in lookup:
-                encontrada = lookup[alias.strip().casefold()]
-                break
-        out[canonica] = encontrada
+        out[canonica] = next(
+            (lookup[clave(a)] for a in [canonica, *aliases] if clave(a) in lookup), None
+        )
     return out
 
 
@@ -873,6 +1017,101 @@ def eval_regla(regla, row, columnas):
     tipo = regla["tipo"]
     variable = regla.get("variable")
     v = getv(row, variable, columnas) if variable not in {"Horas de sala"} else None
+
+    if tipo in {"required_date_if_egreso", "required_if_egreso"}:
+        if columnas.get("INDICADOR_EGRESO") is None:
+            return "NO APLICA", "No existe INDICADOR_EGRESO en la fuente.", v
+        if (texto(getv(row, "INDICADOR_EGRESO", columnas)) or "").strip() not in {
+            "1",
+            "1.0",
+        }:
+            return "NO APLICA", "INDICADOR_EGRESO distinto de 1.", v
+        if es_nulo(v):
+            return "NO CUMPLE", f"{variable} obligatorio cuando INDICADOR_EGRESO=1.", v
+        if tipo == "required_date_if_egreso" and fecha(v) is None:
+            return "NO CUMPLE", f"{variable} no es fecha válida.", v
+        return "CUMPLE", "", v
+
+    if tipo == "propuesta_v85":
+        kind = regla["validacion"]
+        other_name = regla.get("other")
+        if columnas.get(variable) is None:
+            return (
+                "NO APLICA",
+                f"Columna {variable} no presente en la fuente; revisar esquema.",
+                v,
+            )
+        if other_name and columnas.get(other_name) is None:
+            return (
+                "NO APLICA",
+                f"Columna condicionante {other_name} ausente; revisar esquema.",
+                v,
+            )
+        other = getv(row, other_name, columnas) if other_name else None
+        if (
+            kind.startswith("required_if_realizada")
+            and (texto(other) or "").strip().casefold() != "realizada"
+        ):
+            return "NO APLICA", "La solicitud no tiene estatus Realizada.", v
+        if kind.startswith("required_if_egreso") and (
+            texto(other) or ""
+        ).strip() not in {"1", "1.0"}:
+            return "NO APLICA", "INDICADOR_EGRESO distinto de 1.", v
+        if kind.startswith("required_if_present") and es_nulo(other):
+            return "NO APLICA", "Campo condicionante vacío.", v
+        if (
+            kind == "required_unless_pending"
+            and "pendiente de programar" in (texto(other) or "").casefold()
+        ):
+            return "NO APLICA", "Solicitud pendiente de programar.", v
+        if kind == "required_if_positive":
+            n = numero(other)
+            if n is None or n <= 0:
+                return "NO APLICA", "No hay suspensiones registradas.", v
+        if kind in {"date_lte_other", "date_gte_other"}:
+            if es_nulo(v) or es_nulo(other):
+                return "NO APLICA", "No se comparan fechas incompletas.", v
+            a, b = fecha(v), fecha(other)
+            if a is None or b is None:
+                return "NO APLICA", "Fecha inválida; revisar reglas de formato.", v
+            ok = a <= b if kind == "date_lte_other" else a >= b
+            return (
+                ("CUMPLE", "", v)
+                if ok
+                else (
+                    "NO CUMPLE",
+                    f"{variable} no respeta el orden respecto a {other_name}.",
+                    v,
+                )
+            )
+        if es_nulo(v):
+            if kind.startswith("optional"):
+                return "NO APLICA", "Valor opcional no informado.", v
+            return (
+                "NO CUMPLE",
+                f"{variable} es obligatorio según la condición de la regla.",
+                v,
+            )
+        val = texto(v).strip()
+        if "numeric" in kind or kind == "required_digits":
+            n = numero(v)
+            if n is None:
+                return "NO CUMPLE", "Se requiere valor numérico.", v
+            if kind == "required_digits":
+                norm = str(int(n)) if float(n).is_integer() else val
+                if not re.fullmatch(r"\d{9}", norm):
+                    return "NO CUMPLE", "Se requieren exactamente nueve dígitos.", v
+        if kind == "optional_date" and fecha(v) is None:
+            return "NO CUMPLE", "Fecha informada inválida.", v
+        if kind == "required_digits":
+            val = norm
+        if variable == "CAUSA_DIRECTA_DEF" and len(val) != 4:
+            return "NO CUMPLE", "Se requieren exactamente cuatro caracteres.", v
+        if regla.get("max") and len(val) > regla["max"]:
+            return "NO CUMPLE", f"Supera {regla['max']} caracteres.", v
+        if "text" in kind and not re.search(r"[A-Za-zÀ-ÿ0-9]", val):
+            return "NO CUMPLE", "Debe contener caracteres alfanuméricos.", v
+        return "CUMPLE", "", v
 
     if tipo in {
         "required_alnum_max",

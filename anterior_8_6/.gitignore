@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.xlsx
+*.xls
+*.csv
+*.parquet
+*.zip
+
+/salidas_privadas/
+/auditoria_local/data/
+*.sqlite
+
+auditoria_privada/
+**/auditoria_privada/
+*.parquet
