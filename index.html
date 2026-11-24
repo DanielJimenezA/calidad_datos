@@ -88,32 +88,29 @@
         </section>
         <section class="kpis">
           <article>
-            <span>Registros analizados</span><strong id="kr">—</strong
+            <span>Registros analizados</span><button class="info-trigger" type="button" aria-label="Explicación: Registros analizados" aria-expanded="false" data-tooltip="Cantidad de registros únicos considerados después de aplicar los filtros de módulo, entidad, CLUES y periodo. No representa la cantidad de evaluaciones.">i</button><strong id="kr">—</strong
             ><small>Universo del periodo y filtros</small>
           </article>
           <article>
-            <span>Registros con al menos un incumplimiento</span
-            ><strong id="kb">—</strong
+            <span>Registros con al menos un incumplimiento</span><button class="info-trigger" type="button" aria-label="Explicación: Registros con al menos un incumplimiento" aria-expanded="false" data-tooltip="Registros únicos con una o más reglas en estado NO CUMPLE. Un mismo registro se cuenta una sola vez aunque incumpla varias reglas.">i</button><strong id="kb">—</strong
             ><small id="recordNote">Registros únicos afectados</small>
           </article>
           <article class="accent">
-            <span>Registros que cumplen todas las reglas aplicables (%)</span
-            ><strong id="kp">—</strong
+            <span>Tasa de registros con incumplimiento (%)</span><button class="info-trigger" type="button" aria-label="Explicación: Tasa de registros con incumplimiento (%)" aria-expanded="false" data-tooltip="Registros únicos afectados divididos entre los registros analizados, multiplicado por 100. Un valor menor indica mejor calidad.">i</button><strong id="kp">—</strong
             ><small id="globalNote"
-              >Registros sin incumplimiento / registros</small
+              >Registros afectados / registros analizados</small
             >
           </article>
           <article>
-            <span>Evaluaciones incumplidas</span><strong id="kf">—</strong
+            <span>Evaluaciones incumplidas</span><button class="info-trigger" type="button" aria-label="Explicación: Evaluaciones incumplidas" aria-expanded="false" data-tooltip="Suma de todas las evaluaciones NO CUMPLE. Un registro puede acumular varias, por lo que este total puede superar el número de registros afectados.">i</button><strong id="kf">—</strong
             ><small id="failNote">Suma de NO CUMPLE de todas las reglas</small>
           </article>
           <article>
-            <span id="ruleKpiTitle">Cumplimiento de regla seleccionada</span
-            ><strong id="ruleKpi">—</strong
+            <span id="ruleKpiTitle">Cumplimiento de regla seleccionada</span><button class="info-trigger" type="button" aria-label="Explicación: Cumplimiento de regla seleccionada" aria-expanded="false" data-tooltip="Porcentaje CUMPLE ÷ (CUMPLE + NO CUMPLE) × 100 para la regla seleccionada. NO APLICA se excluye del denominador.">i</button><strong id="ruleKpi">—</strong
             ><small id="ruleKpiNote">Seleccione una regla para consultar</small>
           </article>
           <article>
-            <span>Variación del cumplimiento</span><strong id="kd">—</strong
+            <span>Variación del cumplimiento</span><button class="info-trigger" type="button" aria-label="Explicación: Variación del cumplimiento" aria-expanded="false" data-tooltip="Diferencia entre el cumplimiento de los periodos comparados, en puntos porcentuales (pp). No es una variación porcentual relativa.">i</button><strong id="kd">—</strong
             ><small id="deltaNote">Sin corte anterior comparable</small>
           </article>
         </section>
@@ -290,11 +287,18 @@
           Versión pública: sólo datos agregados. Los periodos sin fecha válida
           se excluyen de las series temporales. Las evaluaciones fallidas pueden
           superar el número de registros porque un registro puede incumplir
-          varias reglas. Los registros individuales permanecen en el Excel de
-          auditoría privado.
+          varias reglas. Los registros individuales permanecen en Parquet privado y se consultan desde el visor local.
         </p>
       </section>
+      <section class="panel" aria-labelledby="auditoria-local-titulo" style="margin:20px 0;padding:20px;border:1px solid #d8dedb;border-radius:12px">
+        <h2 id="auditoria-local-titulo">Detalle de registros con incidencias · Auditoría privada</h2>
+        <p>Para revisar el archivo, fila, variable, valor observado y motivo de cada incumplimiento, inicia el visor local. La versión pública no contiene registros individuales.</p>
+        <p><a href="http://127.0.0.1:8765/" target="_blank" rel="noopener noreferrer">Abrir visor local de incidencias</a> (requiere que el servidor de auditoría esté ejecutándose en este equipo).</p>
+        <p class="privacy">El visor permite filtrar por módulo, entidad, CLUES y regla, paginar y exportar CSV filtrado. Los filtros del tablero público no se transfieren automáticamente al visor local.</p>
+      </section>
     </main>
-    <script src="js/app.js?v=7.3"></script>
-  </body>
+    <footer class="institutional-footer"><strong>Coordinación de Planeación Estratégica · División de Sistemas de Información en Salud</strong><p>IMSS-Bienestar · Expediente Digital</p><p>Créditos: <a href="https://github.com/DanielJimenezA" target="_blank" rel="noopener noreferrer">DanielJimenezA · GitHub</a></p></footer><script src="js/app.js?v=8.0"></script>
+  <div id="kpiTooltip" class="info-popover" role="tooltip" hidden></div>
+<script src="js/tooltips.js" defer></script>
+</body>
 </html>

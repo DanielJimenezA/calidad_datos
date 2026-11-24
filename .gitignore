@@ -7,3 +7,11 @@ __pycache__/
 *.csv
 *.parquet
 *.zip
+
+/salidas_privadas/
+/auditoria_local/data/
+*.sqlite
+
+auditoria_privada/
+**/auditoria_privada/
+*.parquet

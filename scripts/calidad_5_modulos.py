@@ -43,6 +43,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 import pandas as pd
+import os
+import time
+
+# Polars es opcional: EDS_MOTOR_LECTURA=polars habilita la lectura acelerada.
+# El motor de reglas sigue siendo Python; no se afirma una migración vectorizada completa.
 
 # ============================================================================
 # CONFIGURACIÓN GENERAL
@@ -331,16 +336,72 @@ REGLAS = {
     ],
     "MOCE": [
         {
+            "id": "MOC-80",
+            "variable": "CVE_MATRICULA",
+            "regla": "Obligatoria, alfanumérica y máximo 12 caracteres",
+            "tipo": "required_alnum_max",
+            "max": 12,
+        },
+        {
+            "id": "MOC-81",
+            "variable": "DES_SERVICIO",
+            "regla": "Obligatoria, texto alfanumérico y máximo 250 caracteres",
+            "tipo": "required_text_max",
+            "max": 250,
+        },
+        {
+            "id": "MOC-82",
+            "variable": "DES_OCASION_SERVICIO_DIAG_PRINCIPAL",
+            "regla": "Obligatoria cuando INI_ATENCION está informado; máximo 100 caracteres",
+            "tipo": "conditional_text_max",
+            "other": "INI_ATENCION",
+            "max": 100,
+        },
+        {
+            "id": "MOC-82",
+            "variable": "DES_OCASION_SERVICIO_DIAG_PRINCIPAL",
+            "regla": "Obligatoria cuando INI_ATENCION está informado; máximo 100 caracteres",
+            "tipo": "conditional_text_max",
+            "other": "INI_ATENCION",
+            "max": 100,
+        },
+        {
+            "id": "MOC-83",
+            "variable": "HORA_CITA",
+            "regla": "Obligatoria; hora válida en formato de 24 horas",
+            "tipo": "required_time",
+        },
+        {
+            "id": "MOC-84",
+            "variable": "INI_ATENCION",
+            "regla": "Obligatoria; hora válida en formato de 24 horas",
+            "tipo": "required_time",
+        },
+        {
+            "id": "MOC-85",
+            "variable": "FIN_ATENCION",
+            "regla": "Obligatoria; hora válida en formato de 24 horas",
+            "tipo": "required_time",
+        },
+        {
+            "id": "MOC-86",
+            "variable": "FIN_ATENCION",
+            "regla": "Hora de fin igual o posterior a la de inicio",
+            "tipo": "time_order",
+            "other": "INI_ATENCION",
+        },
+        {
+            "id": "MOC-86",
+            "variable": "FIN_ATENCION",
+            "regla": "Fin igual o posterior al inicio (no se infieren cruces de medianoche)",
+            "tipo": "time_order",
+            "other": "INI_ATENCION",
+        },
+        {
             "id": "MOC-01",
             "variable": "CLUES",
             "regla": "No nula, 11 caracteres e IMB en posiciones 3-5",
             "tipo": "clues",
-        },
-        {
-            "id": "MOC-02",
-            "variable": "FECHA_ATENCION",
-            "regla": "No puede ser nula y debe ser fecha válida",
-            "tipo": "required_date",
         },
         {
             "id": "MOC-03",
@@ -813,6 +874,81 @@ def eval_regla(regla, row, columnas):
     variable = regla.get("variable")
     v = getv(row, variable, columnas) if variable not in {"Horas de sala"} else None
 
+    if tipo in {
+        "required_alnum_max",
+        "required_text_max",
+        "conditional_text_max",
+        "required_time",
+        "time_order",
+    }:
+        import re as _re
+        from datetime import datetime as _dt, time as _time
+
+        def _hora(x):
+            if es_nulo(x):
+                return None
+            if isinstance(x, _dt):
+                return x.time()
+            if isinstance(x, _time):
+                return x
+            st = texto(x).strip()
+            for pattern in ("%H:%M:%S", "%H:%M"):
+                try:
+                    return _dt.strptime(st, pattern).time()
+                except ValueError:
+                    pass
+            return None
+
+        if tipo == "conditional_text_max" and es_nulo(
+            getv(row, regla["other"], columnas)
+        ):
+            return "NO APLICA", "La condición no se cumple.", v
+        if tipo == "time_order":
+            ini = _hora(getv(row, regla["other"], columnas))
+            fin = _hora(v)
+            if ini is None or fin is None:
+                return (
+                    "NO APLICA",
+                    "Una hora es inválida; se evalúa en las reglas de formato.",
+                    v,
+                )
+            return (
+                ("CUMPLE", "", v)
+                if fin >= ini
+                else ("NO CUMPLE", "La hora de fin es anterior a la de inicio.", v)
+            )
+        if es_nulo(v):
+            return "NO CUMPLE", f"{variable} está nulo o vacío.", v
+        st = texto(v).strip()
+
+        if regla["id"] == "MOC-80":
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                if isinstance(v, float) and v.is_integer():
+                    st = str(int(v))
+                elif isinstance(v, int):
+                    st = str(v)
+        if tipo == "required_time":
+            return (
+                ("CUMPLE", "", v)
+                if _hora(v) is not None
+                else (
+                    "NO CUMPLE",
+                    "Hora inválida; se espera HH:MM o HH:MM:SS (24 horas).",
+                    v,
+                )
+            )
+        if len(st) > regla["max"]:
+            return "NO CUMPLE", f"Supera el máximo de {regla['max']} caracteres.", v
+        if tipo == "required_alnum_max" and not _re.fullmatch(r"[A-Za-z0-9]+", st):
+            return (
+                "NO CUMPLE",
+                "Solo se permiten caracteres alfanuméricos sin espacios.",
+                v,
+            )
+        if not _re.search(r"[A-Za-zÀ-ÿ0-9]", st):
+            return "NO CUMPLE", "Debe contener texto alfanumérico.", v
+        return "CUMPLE", "", v
+
     if tipo == "required":
         if es_nulo(v):
             return "NO CUMPLE", f"{variable} está nulo o vacío.", v
@@ -1100,6 +1236,44 @@ def detectar_separador_csv(ruta):
 
 def leer_archivo(ruta):
     ext = ruta.suffix.lower()
+    motor = os.environ.get("EDS_MOTOR_LECTURA", "pandas").strip().lower()
+    if motor not in ("pandas", "polars"):
+        raise ValueError("EDS_MOTOR_LECTURA debe ser pandas o polars")
+    if motor == "polars" and ext in (".csv", ".parquet", ".pq"):
+        try:
+            import polars as pl
+        except ImportError as e:
+            raise RuntimeError("Instale polars: pip install polars") from e
+        inicio = time.perf_counter()
+        if ext == ".csv":
+            sep = detectar_separador_csv(ruta)
+            errores = []
+            for cod in ("utf8", "utf8-lossy", "windows-1252"):
+                try:
+                    # infer_schema_length=0 mantiene los valores como texto,
+                    # evita perder ceros a la izquierda en CLUES e identificadores.
+                    lf = pl.scan_csv(
+                        str(ruta),
+                        separator=sep,
+                        encoding=cod,
+                        infer_schema_length=0,
+                        ignore_errors=False,
+                        truncate_ragged_lines=False,
+                    )
+                    df_pl = lf.collect(engine="streaming")
+                    break
+                except Exception as e:
+                    errores.append(f"{cod}: {e}")
+            else:
+                raise ValueError("Polars no pudo leer el CSV: " + "; ".join(errores))
+        else:
+            df_pl = pl.scan_parquet(str(ruta)).collect(engine="streaming")
+        print(
+            f"Lectura Polars: {df_pl.height:,} filas en {time.perf_counter()-inicio:.2f}s"
+        )
+        # Adaptador de compatibilidad: las reglas originales consumen pandas.
+        # Esto supone un costo de conversión y uso adicional de RAM.
+        return df_pl.to_pandas()
 
     if ext == ".csv":
         sep = detectar_separador_csv(ruta)
@@ -1188,6 +1362,7 @@ FECHAS_HISTORICAS = {
     "Egresos": "FECHA_HORA_EGRESO",
 }
 
+
 def convertir_fecha_historica(valor):
     if es_nulo(valor):
         return pd.NaT
@@ -1202,6 +1377,7 @@ def convertir_fecha_historica(valor):
         pass
     return pd.to_datetime(txt, errors="coerce", dayfirst=True)
 
+
 def fecha_historica(row, modulo, columnas):
     campo = FECHAS_HISTORICAS[modulo]
     valor = getv(row, campo, columnas)
@@ -1210,6 +1386,7 @@ def fecha_historica(row, modulo, columnas):
         return None
     return dt
 
+
 def semana_historica(row, modulo, columnas):
     dt = fecha_historica(row, modulo, columnas)
     if dt is None:
@@ -1217,11 +1394,14 @@ def semana_historica(row, modulo, columnas):
     iso = dt.isocalendar()
     return f"{iso.year}-S{iso.week:02d}"
 
+
 def conteo_registros():
     return {"REGISTROS": 0, "REGISTROS_CON_INCUMPLIMIENTO": 0}
 
+
 def conteo_reglas():
     return {"CUMPLE": 0, "NO_CUMPLE": 0, "NO_APLICA": 0}
+
 
 # ============================================================================
 # ANÁLISIS
@@ -1268,7 +1448,11 @@ def analizar(modulo, ruta):
     print(f"Reglas: {len(reglas):,}")
     print()
 
-    for i, row in df.iterrows():
+    # itertuples evita crear una Serie por registro (más rápido que iterrows).
+    # dict mantiene .get() y nombres de columna originales para eval_regla().
+    nombres_columnas = list(df.columns)
+    for i, valores in enumerate(df.itertuples(index=False, name=None)):
+        row = dict(zip(nombres_columnas, valores))
         fila = i + 2
         key = clave_registro(row, modulo, columnas, fila)
 
@@ -1276,7 +1460,11 @@ def analizar(modulo, ruta):
         clues_texto = "" if es_nulo(clues_valor) else texto(clues_valor).strip().upper()
         entidad_codigo, entidad_nombre = entidad_desde_clues(clues_valor)
         fecha_evento = fecha_historica(row, modulo, columnas)
-        semana = None if fecha_evento is None else f"{fecha_evento.isocalendar().year}-S{fecha_evento.isocalendar().week:02d}"
+        semana = (
+            None
+            if fecha_evento is None
+            else f"{fecha_evento.isocalendar().year}-S{fecha_evento.isocalendar().week:02d}"
+        )
         mes = None if fecha_evento is None else fecha_evento.strftime("%Y-%m")
         if semana is None:
             sin_fecha += 1
@@ -1293,14 +1481,24 @@ def analizar(modulo, ruta):
 
         unidad_key = (entidad_codigo, clues_texto)
         if unidad_key not in stats_unidad:
-            stats_unidad[unidad_key] = {"MODULO": modulo, "ENTIDAD_CODIGO": entidad_codigo, "ENTIDAD": entidad_nombre, "CLUES": clues_texto, "REGISTROS": 0, "REGISTROS_CON_INCUMPLIMIENTO": 0, "NO_CUMPLE": 0}
+            stats_unidad[unidad_key] = {
+                "MODULO": modulo,
+                "ENTIDAD_CODIGO": entidad_codigo,
+                "ENTIDAD": entidad_nombre,
+                "CLUES": clues_texto,
+                "REGISTROS": 0,
+                "REGISTROS_CON_INCUMPLIMIENTO": 0,
+                "NO_CUMPLE": 0,
+            }
         stats_unidad[unidad_key]["REGISTROS"] += 1
         fila_incumple = False
         for regla in reglas:
             estado, motivo, valor = eval_regla(regla, row, columnas)
             if semana is not None:
                 clave_hr = (semana, modulo, entidad_codigo, clues_texto, regla["id"])
-                estado_key = {"CUMPLE": "CUMPLE", "NO CUMPLE": "NO_CUMPLE"}.get(estado, "NO_APLICA")
+                estado_key = {"CUMPLE": "CUMPLE", "NO CUMPLE": "NO_CUMPLE"}.get(
+                    estado, "NO_APLICA"
+                )
                 historico_reglas[clave_hr][estado_key] += 1
                 clave_mr = (mes, modulo, entidad_codigo, clues_texto, regla["id"])
                 mensual_reglas[clave_mr][estado_key] += 1
@@ -1333,6 +1531,7 @@ def analizar(modulo, ruta):
                 resultados.append(
                     {
                         "MODULO": modulo,
+                        "ARCHIVO_ORIGEN": ruta.name,
                         "ENTIDAD_CODIGO": entidad_codigo,
                         "ENTIDAD": entidad_nombre,
                         "CLUES": clues_texto,
@@ -1445,9 +1644,11 @@ def analizar(modulo, ruta):
                 "ENTIDAD": dato["ENTIDAD"],
                 "REGISTROS": dato["REGISTROS"],
                 "REGISTROS_CON_INCUMPLIMIENTO": registros_con_incumplimiento,
-                "PORCENTAJE_REGISTROS_CON_INCUMPLIMIENTO": round(
-                    registros_con_incumplimiento / dato["REGISTROS"] * 100, 2
-                ) if dato["REGISTROS"] else None,
+                "PORCENTAJE_REGISTROS_CON_INCUMPLIMIENTO": (
+                    round(registros_con_incumplimiento / dato["REGISTROS"] * 100, 2)
+                    if dato["REGISTROS"]
+                    else None
+                ),
                 "EVALUABLES": ev,
                 "CUMPLE": int(sub["CUMPLE"].sum()) if not sub.empty else 0,
                 "NO_CUMPLE": nc,
@@ -1457,16 +1658,55 @@ def analizar(modulo, ruta):
         )
     df_entidad = pd.DataFrame(filas_entidad)
 
-    hist_reg = [dict(SEMANA_ISO=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], **v) for k,v in historico_registros.items()]
-    hist_rule = [dict(SEMANA_ISO=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], REGLA_ID=k[4], EVALUABLES=v["CUMPLE"]+v["NO_CUMPLE"], **v) for k,v in historico_reglas.items()]
-    mes_reg = [dict(MES=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], **v) for k,v in mensual_registros.items()]
-    mes_rule = [dict(MES=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], REGLA_ID=k[4], EVALUABLES=v["CUMPLE"]+v["NO_CUMPLE"], **v) for k,v in mensual_reglas.items()]
+    hist_reg = [
+        dict(SEMANA_ISO=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], **v)
+        for k, v in historico_registros.items()
+    ]
+    hist_rule = [
+        dict(
+            SEMANA_ISO=k[0],
+            MODULO=k[1],
+            ENTIDAD_CODIGO=k[2],
+            CLUES=k[3],
+            REGLA_ID=k[4],
+            EVALUABLES=v["CUMPLE"] + v["NO_CUMPLE"],
+            **v,
+        )
+        for k, v in historico_reglas.items()
+    ]
+    mes_reg = [
+        dict(MES=k[0], MODULO=k[1], ENTIDAD_CODIGO=k[2], CLUES=k[3], **v)
+        for k, v in mensual_registros.items()
+    ]
+    mes_rule = [
+        dict(
+            MES=k[0],
+            MODULO=k[1],
+            ENTIDAD_CODIGO=k[2],
+            CLUES=k[3],
+            REGLA_ID=k[4],
+            EVALUABLES=v["CUMPLE"] + v["NO_CUMPLE"],
+            **v,
+        )
+        for k, v in mensual_reglas.items()
+    ]
     if sum(x["REGISTROS"] for x in mes_reg) + sin_fecha != len(df):
         raise ValueError(f"Inconsistencia mensual en {modulo}")
     if sum(x["REGISTROS"] for x in hist_reg) + sin_fecha != len(df):
         raise ValueError(f"Inconsistencia histórica en {modulo}")
-    return (df_reglas, df_resultados, len(df), df_entidad, df_entidad_regla,
-            pd.DataFrame(list(stats_unidad.values())), hist_reg, hist_rule, sin_fecha, mes_reg, mes_rule)
+    return (
+        df_reglas,
+        df_resultados,
+        len(df),
+        df_entidad,
+        df_entidad_regla,
+        pd.DataFrame(list(stats_unidad.values())),
+        hist_reg,
+        hist_rule,
+        sin_fecha,
+        mes_reg,
+        mes_rule,
+    )
 
 
 # ============================================================================
@@ -1782,7 +2022,9 @@ def seleccionar_salida_consolidada(carpeta):
 
 def exportar_excel_consolidado(ruta_salida, analisis):
     """
-    Genera un solo Excel con 13 hojas: 3 resúmenes + 10 hojas de detalle:
+    Genera un Excel con resúmenes y muestras de hasta 10,000 filas por módulo.
+    Exporta el detalle completo a Parquet privado (requiere pyarrow).
+    Hojas:
       Cir_Reglas, Cir_Resultados
       MOCE_Reglas, MOCE_Resultados
       Urg_Reglas, Urg_Resultados
@@ -1903,12 +2145,31 @@ def exportar_excel_consolidado(ruta_salida, analisis):
             else:
                 resultados_export = resultados
 
-            resultados_export.to_excel(writer, sheet_name=hoja_resultados, index=False)
+            # Excel es exclusivamente resumen. El detalle íntegro se conserva en Parquet.
+            # Nunca se guarda el detalle individual dentro del directorio público data/.
+            carpeta_privada = Path(ruta_salida).resolve().parent / "auditoria_privada"
+            carpeta_privada.mkdir(parents=True, exist_ok=True)
+            ruta_parquet = carpeta_privada / f"{hoja_resultados}.parquet"
+            if resultados.empty:
+                # Esquema coherente para visor, aun sin incumplimientos.
+                resultados.iloc[:0].to_parquet(
+                    ruta_parquet, index=False, engine="pyarrow"
+                )
+            else:
+                resultados.to_parquet(
+                    ruta_parquet, index=False, engine="pyarrow", compression="zstd"
+                )
+            print(f"  Auditoría privada: {ruta_parquet} ({len(resultados):,} filas)")
 
+            # Solo muestra limitada en Excel para evitar su límite de 1,048,576 filas.
+            # La muestra no sustituye el Parquet completo.
+            limite_muestra = 10000
+            resultados_excel = resultados_export.head(limite_muestra).copy()
+            resultados_excel.to_excel(writer, sheet_name=hoja_resultados, index=False)
             ws_r = writer.sheets[hoja_reglas]
             ws_d = writer.sheets[hoja_resultados]
 
-            for ws, data in ((ws_r, reglas), (ws_d, resultados_export)):
+            for ws, data in ((ws_r, reglas), (ws_d, resultados_excel)):
                 ws.freeze_panes(1, 0)
                 ws.autofilter(0, 0, max(1, len(data)), len(data.columns) - 1)
 
@@ -1944,7 +2205,7 @@ def exportar_excel_consolidado(ruta_salida, analisis):
                 "MOTIVO": 78,
             }
 
-            for i, c in enumerate(resultados_export.columns):
+            for i, c in enumerate(resultados_excel.columns):
                 ws_d.set_column(i, i, widths_results.get(c, 18), wrap)
 
             if len(reglas):
@@ -1990,12 +2251,12 @@ def exportar_excel_consolidado(ruta_salida, analisis):
                 pct_col = reglas.columns.get_loc("PORCENTAJE_CUMPLIMIENTO")
                 ws_r.set_column(pct_col, pct_col, 24, percent)
 
-            if len(resultados_export):
-                col_res = resultados_export.columns.get_loc("RESULTADO")
+            if len(resultados_excel):
+                col_res = resultados_excel.columns.get_loc("RESULTADO")
                 ws_d.conditional_format(
                     1,
                     col_res,
-                    len(resultados_export),
+                    len(resultados_excel),
                     col_res,
                     {
                         "type": "text",
@@ -2016,7 +2277,6 @@ def exportar_excel_consolidado(ruta_salida, analisis):
             )
 
 
-
 def exportar_historico_semanal(analisis, ruta_json):
     ruta = Path(ruta_json).parent / "historico_semanal.json"
     registros, reglas, sin_fecha = [], [], {}
@@ -2024,12 +2284,19 @@ def exportar_historico_semanal(analisis, ruta_json):
         registros.extend(info["historico_registros"])
         reglas.extend(info["historico_reglas"])
         sin_fecha[modulo] = int(info["registros_sin_fecha"])
-    payload = {"version": "7.0", "generado": datetime.now().isoformat(timespec="seconds"),
-               "fechas": FECHAS_HISTORICAS, "registros_sin_fecha": sin_fecha,
-               "registros": registros, "reglas": reglas}
+    payload = {
+        "version": "7.0",
+        "generado": datetime.now().isoformat(timespec="seconds"),
+        "fechas": FECHAS_HISTORICAS,
+        "registros_sin_fecha": sin_fecha,
+        "registros": registros,
+        "reglas": reglas,
+    }
     ruta.parent.mkdir(parents=True, exist_ok=True)
     with ruta.open("w", encoding="utf-8") as archivo:
-        json.dump(payload, archivo, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        json.dump(
+            payload, archivo, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
     return ruta
 
 
@@ -2039,17 +2306,25 @@ def exportar_historico_mensual(analisis, ruta_json):
     for modulo, info in analisis.items():
         registros.extend(info["mensual_registros"])
         reglas.extend(info["mensual_reglas"])
-    payload = {"version":"7.4", "generado":datetime.now().isoformat(timespec="seconds"),
-               "fechas":FECHAS_HISTORICAS, "registros":registros, "reglas":reglas}
+    payload = {
+        "version": "7.4",
+        "generado": datetime.now().isoformat(timespec="seconds"),
+        "fechas": FECHAS_HISTORICAS,
+        "registros": registros,
+        "reglas": reglas,
+    }
     ruta.parent.mkdir(parents=True, exist_ok=True)
     with ruta.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        json.dump(
+            payload, f, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
     return ruta
+
 
 def exportar_json_tablero(analisis, ruta_json=None):
     """Publica únicamente agregados; histórico filtrable y una observación por semana ISO."""
     if ruta_json is None:
-        ruta_json = Path(__file__).resolve().parents[1] / "tablero" / "data" / "calidad.json"
+        ruta_json = Path(__file__).resolve().parents[1] / "data" / "calidad.json"
     ruta_json = Path(ruta_json)
     ruta_json.parent.mkdir(parents=True, exist_ok=True)
     ruta_tendencia = ruta_json.parent / "tendencia.json"
@@ -2057,12 +2332,17 @@ def exportar_json_tablero(analisis, ruta_json=None):
     catalogo = {}
     if catalogo_path.exists():
         with catalogo_path.open(encoding="utf-8") as f:
-            catalogo = {str(x.get("clues", "")).strip().upper(): x for x in json.load(f).get("unidades", [])}
+            catalogo = {
+                str(x.get("clues", "")).strip().upper(): x
+                for x in json.load(f).get("unidades", [])
+            }
 
     def records(df):
         if df is None or df.empty:
             return []
-        return json.loads(df.to_json(orient="records", force_ascii=False, date_format="iso"))
+        return json.loads(
+            df.to_json(orient="records", force_ascii=False, date_format="iso")
+        )
 
     modulos, entidades, entidad_reglas, unidades = [], [], [], []
     for modulo, info in analisis.items():
@@ -2078,7 +2358,17 @@ def exportar_json_tablero(analisis, ruta_json=None):
             raise ValueError(f"Inconsistencia EVALUABLES en {modulo}")
         if afectados > total:
             raise ValueError(f"Registros afectados mayores al universo en {modulo}")
-        modulos.append({"MODULO": modulo, "REGISTROS": total, "REGISTROS_CON_INCUMPLIMIENTO": afectados, "NO_CUMPLE": nc, "CUMPLE": cumple, "EVALUABLES": ev, "NO_APLICA": na})
+        modulos.append(
+            {
+                "MODULO": modulo,
+                "REGISTROS": total,
+                "REGISTROS_CON_INCUMPLIMIENTO": afectados,
+                "NO_CUMPLE": nc,
+                "CUMPLE": cumple,
+                "EVALUABLES": ev,
+                "NO_APLICA": na,
+            }
+        )
         entidades.extend(records(info["resumen_entidad"]))
         entidad_reglas.extend(records(info["resumen_entidad_regla"]))
         for u in records(info["resumen_unidad"]):
@@ -2090,7 +2380,14 @@ def exportar_json_tablero(analisis, ruta_json=None):
     ahora = datetime.now()
     semana = f"{ahora.isocalendar().year}-S{ahora.isocalendar().week:02d}"
     payload = {
-        "metadata": {"titulo": "Calidad de datos institucional", "generado": ahora.isoformat(timespec="seconds"), "fecha_corte": ahora.date().isoformat(), "semana_iso": semana, "version": "6.0", "reglas_version": "v6-reglas"},
+        "metadata": {
+            "titulo": "Calidad de datos institucional",
+            "generado": ahora.isoformat(timespec="seconds"),
+            "fecha_corte": ahora.date().isoformat(),
+            "semana_iso": semana,
+            "version": "6.0",
+            "reglas_version": "v6-reglas",
+        },
         "resumen_modulos": modulos,
         "resumen_entidad": entidades,
         "resumen_entidad_regla": entidad_reglas,
@@ -2102,17 +2399,37 @@ def exportar_json_tablero(analisis, ruta_json=None):
     if ruta_tendencia.exists():
         try:
             with ruta_tendencia.open(encoding="utf-8") as f:
-                cortes = [x for x in json.load(f).get("cortes", []) if x.get("version") == "6.0" and x.get("resumen_modulos") is not None]
+                cortes = [
+                    x
+                    for x in json.load(f).get("cortes", [])
+                    if x.get("version") == "6.0"
+                    and x.get("resumen_modulos") is not None
+                ]
         except (ValueError, OSError):
             pass
-    corte = {"version": "6.0", "fecha_corte": payload["metadata"]["fecha_corte"], "semana_iso": semana, "generado": payload["metadata"]["generado"], "reglas_version": payload["metadata"]["reglas_version"], "resumen_modulos": modulos, "resumen_entidad": entidades, "resumen_entidad_regla": entidad_reglas}
+    corte = {
+        "version": "6.0",
+        "fecha_corte": payload["metadata"]["fecha_corte"],
+        "semana_iso": semana,
+        "generado": payload["metadata"]["generado"],
+        "reglas_version": payload["metadata"]["reglas_version"],
+        "resumen_modulos": modulos,
+        "resumen_entidad": entidades,
+        "resumen_entidad_regla": entidad_reglas,
+    }
     cortes = [x for x in cortes if x.get("semana_iso") != semana]
     cortes.append(corte)
     cortes.sort(key=lambda x: x["fecha_corte"])
     with ruta_json.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, allow_nan=False)
     with ruta_tendencia.open("w", encoding="utf-8") as f:
-        json.dump({"version": "6.0", "cortes": cortes}, f, ensure_ascii=False, indent=2, allow_nan=False)
+        json.dump(
+            {"version": "6.0", "cortes": cortes},
+            f,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
     return ruta_json, ruta_tendencia
 
 
@@ -2158,8 +2475,19 @@ def main():
             print(f"MÓDULO {numero_modulo}/5: {modulo.upper()}")
             print("#" * 90)
 
-            (reglas, resultados, total, resumen_entidad, resumen_entidad_regla,
-             resumen_unidad, hist_reg, hist_rule, sin_fecha, mes_reg, mes_rule) = analizar(modulo, archivo)
+            (
+                reglas,
+                resultados,
+                total,
+                resumen_entidad,
+                resumen_entidad_regla,
+                resumen_unidad,
+                hist_reg,
+                hist_rule,
+                sin_fecha,
+                mes_reg,
+                mes_rule,
+            ) = analizar(modulo, archivo)
 
             analisis[modulo] = {
                 "reglas": reglas,

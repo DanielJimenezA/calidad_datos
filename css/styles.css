@@ -68,3 +68,14 @@ th.sortable:focus-visible{outline:2px solid #bc955c;outline-offset:-2px}
 @media(max-width:620px){.quality-key.compact{width:100%}.kpis small{font-size:12px}}
 
 .order-controls{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 14px;align-items:end}.order-controls label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:#46535b}.order-controls select{min-width:175px;max-width:100%;padding:8px;border:1px solid #d7d0d4;border-radius:7px;background:white}.month-filter[hidden],.week-filter[hidden]{display:none!important}
+
+.institutional-footer{background:#10312B;color:#fff;padding:28px 5%;text-align:center;margin-top:28px;font-size:.9rem}.institutional-footer p{margin:7px 0}.institutional-footer a{color:#e4c58d;text-decoration:underline}.kpis span[title]{cursor:help}
+
+/* Ayuda contextual accesible: mouse, teclado y pantallas táctiles */
+.info-trigger{display:inline-grid;place-items:center;vertical-align:middle;margin-left:6px;width:21px;height:21px;border:1px solid #235B4E;border-radius:50%;background:#f3f8f5;color:#10312B;font-size:12px;font-weight:800;cursor:pointer;line-height:1;text-transform:none}
+.info-trigger:hover,.info-trigger:focus-visible,.info-trigger[aria-expanded="true"]{background:#235B4E;color:white;outline-offset:3px}
+.info-popover{position:fixed;z-index:9999;width:min(350px,calc(100vw - 24px));padding:14px 16px;border:1px solid #c6d9d0;border-top:4px solid #235B4E;border-radius:10px;background:#fff;color:#243a32;box-shadow:0 10px 35px #0003;font-size:13px;line-height:1.5;text-align:left;white-space:normal}
+.info-popover[hidden]{display:none}
+
+/* Tooltip visible sin interferir con el puntero ni con los controles */
+.info-popover{pointer-events:none;max-height:calc(100vh - 24px);overflow:auto}
